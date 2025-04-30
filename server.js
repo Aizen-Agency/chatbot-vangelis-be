@@ -342,6 +342,24 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log('Client disconnected');
+    // Delete session and associated messages when client disconnects
+    (async () => {
+      try {
+        // Delete all messages associated with the session
+        await Message.destroy({
+          where: { sessionId: socket.id }
+        });
+
+        // Delete the session
+        await ChatSession.destroy({
+          where: { sessionId: socket.id }
+        });
+
+        console.log('Session deleted on disconnect:', socket.id);
+      } catch (error) {
+        console.error('Error deleting session on disconnect:', error);
+      }
+    })();
   });
 });
 
