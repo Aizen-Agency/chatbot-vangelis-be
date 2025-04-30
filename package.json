@@ -20,7 +20,8 @@
     "openai": "^4.96.2",
     "pg": "^8.15.6",
     "sequelize": "^6.37.7",
-    "socket.io": "^4.8.1"
+    "socket.io": "^4.8.1",
+    "cheerio": "^1.0.0"
   },
   "engines": {
     "node": ">=14.0.0"
