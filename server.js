@@ -16,8 +16,11 @@ const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
     origin: "*",
-    methods: ["GET", "POST"]
-  }
+    methods: ["GET", "POST"],
+    allowedHeaders: ["my-custom-header"],
+    credentials: true
+  },
+  transports: ['websocket', 'polling']
 });
 
 // Middleware
@@ -105,10 +108,14 @@ Message.belongsTo(ChatSession, {
 });
 
 // Initialize database
-sequelize.sync({ force: true }) // Use force: true only in development to recreate tables
+sequelize
+  .authenticate()
+  .then(() => {
+    console.log('Database connection established successfully.');
+    return sequelize.sync({ force: false });
+  })
   .then(async () => {
     console.log('Database synchronized');
-    // Create default global settings if they don't exist
     await GlobalSettings.findOrCreate({
       where: { id: 1 },
       defaults: {
@@ -118,7 +125,9 @@ sequelize.sync({ force: true }) // Use force: true only in development to recrea
       }
     });
   })
-  .catch(err => console.error('Database sync error:', err));
+  .catch(err => {
+    console.error('Unable to connect to the database:', err);
+  });
 
 // Function to fetch data from Google Sheet
 async function fetchSheetData(sheetId) {
@@ -526,6 +535,6 @@ app.get('/api/knowledge-base-url', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
 });
