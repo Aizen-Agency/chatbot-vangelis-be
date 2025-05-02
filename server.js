@@ -283,7 +283,7 @@ Only include the specified fields in the response.`;
 
     // Use OpenAI to analyze the chat and extract variables
     const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
@@ -478,7 +478,7 @@ io.on('connection', (socket) => {
 
       // Get response from OpenAI
       const completion = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo",
+        model: "gpt-4o", 
         messages: formattedMessages
       });
 
