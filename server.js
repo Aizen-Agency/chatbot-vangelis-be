@@ -78,6 +78,14 @@ const GlobalSettings = sequelize.define('GlobalSettings', {
   knowledgeBaseUrls: {
     type: DataTypes.ARRAY(DataTypes.STRING),
     defaultValue: []
+  },
+  extractionHeaders: {
+    type: DataTypes.ARRAY(DataTypes.STRING),
+    defaultValue: []
+  },
+  targetSpreadsheetId: {
+    type: DataTypes.STRING,
+    allowNull: true
   }
 });
 
@@ -88,6 +96,26 @@ const Message = sequelize.define('Message', {
     allowNull: false
   },
   content: {
+    type: DataTypes.TEXT,
+    allowNull: false
+  },
+  timestamp: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
+  }
+});
+
+// Chat Variables model
+const ChatVariable = sequelize.define('ChatVariable', {
+  sessionId: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  variableName: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  variableValue: {
     type: DataTypes.TEXT,
     allowNull: false
   },
@@ -221,6 +249,52 @@ async function formatAllWebpageContentForContext(urls) {
   }
   
   return allContext;
+}
+
+// Function to analyze chat messages and extract variables
+async function analyzeChatForVariables(sessionId) {
+  try {
+    // Get all messages for the session
+    const messages = await Message.findAll({
+      where: { sessionId },
+      order: [['timestamp', 'ASC']]
+    });
+
+    // Combine all messages into a single text
+    const chatText = messages.map(m => m.content).join('\n');
+
+    // Use OpenAI to analyze the chat and extract variables
+    const completion = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "system",
+          content: "Analyze the following chat conversation and extract any mentioned variables, measurements, specifications, or important details. Format the response as a JSON object where each key is a variable name and the value is the extracted value. Only include variables that are explicitly mentioned or can be clearly inferred."
+        },
+        {
+          role: "user",
+          content: chatText
+        }
+      ],
+      response_format: { type: "json_object" }
+    });
+
+    const extractedVariables = JSON.parse(completion.choices[0].message.content);
+
+    // Save extracted variables to database
+    for (const [variableName, variableValue] of Object.entries(extractedVariables)) {
+      await ChatVariable.create({
+        sessionId,
+        variableName,
+        variableValue: String(variableValue)
+      });
+    }
+
+    return extractedVariables;
+  } catch (error) {
+    console.error('Error analyzing chat for variables:', error);
+    throw error;
+  }
 }
 
 // Socket.IO connection handling
@@ -390,23 +464,14 @@ app.delete('/api/sessions/:sessionId', async (req, res) => {
   try {
     const { sessionId } = req.params;
     
-    // Delete all messages associated with the session
-    await Message.destroy({
-      where: { sessionId }
-    });
-
-    // Delete the session
-    const deleted = await ChatSession.destroy({
-      where: { sessionId }
-    });
-
-    if (deleted) {
-      // Notify connected clients about the deletion
-      io.emit('sessionDeleted', { sessionId });
-      res.json({ success: true });
-    } else {
-      res.status(404).json({ error: 'Session not found' });
-    }
+    // Analyze chat for variables before deleting
+    await analyzeChatForVariables(sessionId);
+    
+    // Delete the session and its messages
+    await Message.destroy({ where: { sessionId } });
+    await ChatSession.destroy({ where: { sessionId } });
+    
+    res.json({ success: true });
   } catch (error) {
     console.error('Error deleting session:', error);
     res.status(500).json({ error: 'Server error' });
@@ -548,6 +613,89 @@ app.get('/api/knowledge-base-url', async (req, res) => {
     res.json({ urls: globalSettings.knowledgeBaseUrls || [] });
   } catch (error) {
     console.error('Error fetching webpage knowledge base:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get extracted variables for a session
+app.get('/api/sessions/:sessionId/variables', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const variables = await ChatVariable.findAll({
+      where: { sessionId },
+      order: [['timestamp', 'DESC']]
+    });
+    
+    res.json({ variables });
+  } catch (error) {
+    console.error('Error fetching variables:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get extraction settings
+app.get('/api/extraction-settings', async (req, res) => {
+  try {
+    const globalSettings = await GlobalSettings.findByPk(1);
+    
+    if (!globalSettings) {
+      return res.status(404).json({ error: 'Global settings not found' });
+    }
+
+    res.json({
+      headers: globalSettings.extractionHeaders || [],
+      targetSpreadsheetId: globalSettings.targetSpreadsheetId
+    });
+  } catch (error) {
+    console.error('Error fetching extraction settings:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Update extraction headers
+app.post('/api/extraction-headers', async (req, res) => {
+  try {
+    const { headers } = req.body;
+    const globalSettings = await GlobalSettings.findByPk(1);
+    
+    if (!globalSettings) {
+      return res.status(404).json({ error: 'Global settings not found' });
+    }
+
+    globalSettings.extractionHeaders = headers;
+    await globalSettings.save();
+    
+    res.json({ success: true, headers: globalSettings.extractionHeaders });
+  } catch (error) {
+    console.error('Error updating extraction headers:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Update target spreadsheet
+app.post('/api/target-spreadsheet', async (req, res) => {
+  try {
+    const { spreadsheetId } = req.body;
+    const globalSettings = await GlobalSettings.findByPk(1);
+    
+    if (!globalSettings) {
+      return res.status(404).json({ error: 'Global settings not found' });
+    }
+
+    // Validate sheet access
+    try {
+      await sheets.spreadsheets.get({ spreadsheetId });
+    } catch (error) {
+      console.error('Error validating sheet access:', error);
+      return res.status(400).json({ error: 'Invalid or inaccessible Google Sheet ID' });
+    }
+
+    globalSettings.targetSpreadsheetId = spreadsheetId;
+    await globalSettings.save();
+    
+    res.json({ success: true, targetSpreadsheetId: globalSettings.targetSpreadsheetId });
+  } catch (error) {
+    console.error('Error updating target spreadsheet:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
