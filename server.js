@@ -257,6 +257,15 @@ async function formatAllWebpageContentForContext(urls) {
 // Function to analyze chat messages and extract variables
 async function analyzeChatForVariables(sessionId) {
   try {
+    // Get global settings for headers
+    const globalSettings = await GlobalSettings.findByPk(1);
+    const headers = globalSettings?.extractionHeaders || [];
+    
+    if (!headers.length) {
+      console.log('No extraction headers configured');
+      return {};
+    }
+
     // Get all messages for the session
     const messages = await Message.findAll({
       where: { sessionId },
@@ -266,13 +275,19 @@ async function analyzeChatForVariables(sessionId) {
     // Combine all messages into a single text
     const chatText = messages.map(m => m.content).join('\n');
 
+    // Create a prompt that specifically asks for the configured headers
+    const extractionPrompt = `Analyze the following chat conversation and extract information for these specific fields: ${headers.join(', ')}. 
+Format the response as a JSON object where each key must exactly match one of these field names: ${headers.join(', ')}. 
+If a field's information is not found in the conversation, set its value to an empty string.
+Only include the specified fields in the response.`;
+
     // Use OpenAI to analyze the chat and extract variables
     const completion = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [
         {
           role: "system",
-          content: "Analyze the following chat conversation and extract any mentioned variables, measurements, specifications, or important details. Format the response as a JSON object where each key is a variable name and the value is the extracted value. Only include variables that are explicitly mentioned or can be clearly inferred."
+          content: extractionPrompt
         },
         {
           role: "user",
@@ -283,6 +298,19 @@ async function analyzeChatForVariables(sessionId) {
     });
 
     const extractedVariables = JSON.parse(completion.choices[0].message.content);
+
+    // Log the extraction process
+    console.log('Extraction Headers:', JSON.stringify(headers, null, 2));
+    console.log('Extracted Variables:', JSON.stringify(extractedVariables, null, 2));
+
+    // Verify that all headers are present in the extracted variables
+    const missingHeaders = headers.filter(header => !(header in extractedVariables));
+    if (missingHeaders.length > 0) {
+      console.log('Adding missing headers with empty values:', missingHeaders);
+      missingHeaders.forEach(header => {
+        extractedVariables[header] = '';
+      });
+    }
 
     // Save extracted variables to database
     for (const [variableName, variableValue] of Object.entries(extractedVariables)) {
