@@ -36,7 +36,10 @@ const openai = new OpenAI({
 const credentials = JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS);
 const auth = new google.auth.GoogleAuth({
   credentials,
-  scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+  scopes: [
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive.file'
+  ],
 });
 
 const sheets = google.sheets({ version: 'v4', auth });
