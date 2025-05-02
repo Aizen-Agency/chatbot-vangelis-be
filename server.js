@@ -297,6 +297,51 @@ async function analyzeChatForVariables(sessionId) {
   }
 }
 
+// Function to write extracted variables to spreadsheet
+async function writeVariablesToSpreadsheet(sessionId) {
+  try {
+    // Get global settings
+    const globalSettings = await GlobalSettings.findByPk(1);
+    if (!globalSettings?.targetSpreadsheetId) {
+      console.log('No target spreadsheet configured');
+      return;
+    }
+
+    // Get extracted variables
+    const variables = await ChatVariable.findAll({
+      where: { sessionId },
+      order: [['timestamp', 'DESC']]
+    });
+
+    if (!variables.length) {
+      console.log('No variables to write to spreadsheet');
+      return;
+    }
+
+    // Format variables according to headers
+    const headers = globalSettings.extractionHeaders || [];
+    const rowData = headers.map(header => {
+      const variable = variables.find(v => v.variableName === header);
+      return variable ? variable.variableValue : '';
+    });
+
+    // Write to spreadsheet
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: globalSettings.targetSpreadsheetId,
+      range: 'Sheet1!A:Z',
+      valueInputOption: 'RAW',
+      insertDataOption: 'INSERT_ROWS',
+      resource: {
+        values: [rowData]
+      }
+    });
+
+    console.log('Successfully wrote variables to spreadsheet');
+  } catch (error) {
+    console.error('Error writing to spreadsheet:', error);
+  }
+}
+
 // Socket.IO connection handling
 io.on('connection', (socket) => {
   console.log('New client connected');
@@ -419,6 +464,12 @@ io.on('connection', (socket) => {
     // Delete session and associated messages when client disconnects
     (async () => {
       try {
+        // Extract variables before deleting
+        await analyzeChatForVariables(socket.id);
+        
+        // Write variables to spreadsheet
+        await writeVariablesToSpreadsheet(socket.id);
+
         // Delete all messages associated with the session
         await Message.destroy({
           where: { sessionId: socket.id }
@@ -431,7 +482,7 @@ io.on('connection', (socket) => {
 
         console.log('Session deleted on disconnect:', socket.id);
       } catch (error) {
-        console.error('Error deleting session on disconnect:', error);
+        console.error('Error in disconnect handler:', error);
       }
     })();
   });
@@ -466,6 +517,9 @@ app.delete('/api/sessions/:sessionId', async (req, res) => {
     
     // Analyze chat for variables before deleting
     await analyzeChatForVariables(sessionId);
+    
+    // Write variables to spreadsheet
+    await writeVariablesToSpreadsheet(sessionId);
     
     // Delete the session and its messages
     await Message.destroy({ where: { sessionId } });
