@@ -321,12 +321,26 @@ async function writeVariablesToSpreadsheet(sessionId) {
       return;
     }
 
-    // Format variables according to headers
+    // Log all extracted variables
+    console.log('Extracted Variables:', JSON.stringify(variables.map(v => ({
+      name: v.variableName,
+      value: v.variableValue
+    })), null, 2));
+
+    // Log configured headers
     const headers = globalSettings.extractionHeaders || [];
+    console.log('Configured Headers:', JSON.stringify(headers, null, 2));
+
+    // Format variables according to headers
     const rowData = headers.map(header => {
       const variable = variables.find(v => v.variableName === header);
-      return variable ? variable.variableValue : '';
+      const value = variable ? variable.variableValue : '';
+      console.log(`Header "${header}" matched with value: "${value}"`);
+      return value;
     });
+
+    // Log final row data
+    console.log('Final Row Data:', JSON.stringify(rowData, null, 2));
 
     // Write to spreadsheet
     await sheets.spreadsheets.values.append({
@@ -719,8 +733,14 @@ app.post('/api/extraction-headers', async (req, res) => {
       return res.status(404).json({ error: 'Global settings not found' });
     }
 
+    console.log('Updating extraction headers:');
+    console.log('Previous headers:', JSON.stringify(globalSettings.extractionHeaders || [], null, 2));
+    console.log('New headers:', JSON.stringify(headers, null, 2));
+
     globalSettings.extractionHeaders = headers;
     await globalSettings.save();
+    
+    console.log('Headers updated successfully');
     
     res.json({ success: true, headers: globalSettings.extractionHeaders });
   } catch (error) {
