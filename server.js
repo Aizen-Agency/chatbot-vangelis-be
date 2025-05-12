@@ -438,9 +438,11 @@ io.on('connection', (socket) => {
       const globalSettings = await GlobalSettings.findByPk(1);
 
       // Add system prompt
+      let systemPrompt = globalSettings.prompt;
+      systemPrompt += ' Please keep your responses short and concise, as you are a chatbot.';
       formattedMessages.unshift({
         role: 'system',
-        content: globalSettings.prompt
+        content: systemPrompt
       });
 
       // If global settings has knowledge base sheets, fetch and add them to context
