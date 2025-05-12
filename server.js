@@ -439,7 +439,7 @@ io.on('connection', (socket) => {
 
       // Add system prompt
       let systemPrompt = globalSettings.prompt;
-      systemPrompt += ' Please keep your responses short and concise, as you are a chatbot.';
+      systemPrompt += ' Always reply in 3 - 4 short sentences, never as a list, and never with long or detailed answers. Keep your responses concise and conversational.';
       formattedMessages.unshift({
         role: 'system',
         content: systemPrompt
