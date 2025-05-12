@@ -482,7 +482,14 @@ io.on('connection', (socket) => {
         messages: formattedMessages
       });
 
-      const assistantMessage = completion.choices[0].message.content;
+      // Limit response length
+      const assistantMessageRaw = completion.choices[0].message.content;
+      const MAX_LENGTH = 500;
+      let assistantMessage = assistantMessageRaw;
+      if (assistantMessage.length > MAX_LENGTH) {
+        assistantMessage = assistantMessage.slice(0, MAX_LENGTH) + '...';
+      }
+      console.log('Assistant message to send:', assistantMessage);
 
       // Stop typing indicator
       socket.emit('stopTyping', { sessionId: 'assistant' });
