@@ -504,6 +504,26 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('deleteSession', async (data) => {
+    const sessionId = data.sessionId || socket.id;
+    try {
+      // Analyze chat for variables before deleting
+      await analyzeChatForVariables(sessionId);
+      // Write variables to spreadsheet
+      await writeVariablesToSpreadsheet(sessionId);
+      // Delete all messages associated with the session
+      await Message.destroy({ where: { sessionId } });
+      // Delete the session
+      await ChatSession.destroy({ where: { sessionId } });
+      console.log('Session deleted via websocket:', sessionId);
+      // Optionally, emit an event back to the client if you want to confirm deletion
+      socket.emit('sessionDeleted', { sessionId });
+    } catch (error) {
+      console.error('Error deleting session via websocket:', error);
+      socket.emit('error', { message: 'Error deleting session' });
+    }
+  });
+
   socket.on('disconnect', () => {
     console.log('Client disconnected');
     // Delete session and associated messages when client disconnects
