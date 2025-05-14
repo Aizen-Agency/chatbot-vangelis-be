@@ -439,7 +439,7 @@ io.on('connection', (socket) => {
 
       // Add system prompt
       let systemPrompt = globalSettings.prompt;
-      systemPrompt += ' Always reply in 3 - 4 short sentences, never as a list, and never with long or detailed answers. Keep your responses concise and conversational.';
+      systemPrompt += ' Always reply in 3 - 4 short sentences, never as a list, and never with long or detailed answers. Keep your responses concise, conversational, and ensure correct spelling and grammar.';
       formattedMessages.unshift({
         role: 'system',
         content: systemPrompt
