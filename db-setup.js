@@ -41,6 +41,10 @@ const GlobalSettings = sequelize.define('GlobalSettings', {
     type: DataTypes.ARRAY(DataTypes.STRING),
     defaultValue: []
   },
+  knowledgeBasePdfPaths: {
+    type: DataTypes.ARRAY(DataTypes.STRING),
+    defaultValue: []
+  },
   extractionHeaders: {
     type: DataTypes.ARRAY(DataTypes.STRING),
     defaultValue: []
@@ -87,6 +91,22 @@ const ChatVariable = sequelize.define('ChatVariable', {
   }
 });
 
+// PDF Content model to store processed PDF content
+const PdfContent = sequelize.define('PdfContent', {
+  filePath: {
+    type: DataTypes.STRING,
+    primaryKey: true
+  },
+  content: {
+    type: DataTypes.TEXT,
+    allowNull: false
+  },
+  lastModified: {
+    type: DataTypes.DATE,
+    allowNull: false
+  }
+});
+
 // Define relationships
 ChatSession.hasMany(Message, {
   foreignKey: 'sessionId',
@@ -114,6 +134,7 @@ async function setupDatabase() {
       prompt: "You are a helpful assistant.",
       knowledgeBaseSheetIds: [],
       knowledgeBaseUrls: [],
+      knowledgeBasePdfPaths: [],
       extractionHeaders: [],
       targetSpreadsheetId: null
     });

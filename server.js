@@ -8,6 +8,8 @@ const socketIo = require('socket.io');
 const { google } = require('googleapis');
 const axios = require('axios');
 const cheerio = require('cheerio');
+const { scanAndProcessPdfs, getAllPdfContentForContext } = require('./pdfHandler');
+const path = require('path');
 
 dotenv.config();
 
@@ -89,6 +91,10 @@ const GlobalSettings = sequelize.define('GlobalSettings', {
   targetSpreadsheetId: {
     type: DataTypes.STRING,
     allowNull: true
+  },
+  knowledgeBasePdfPaths: {
+    type: DataTypes.ARRAY(DataTypes.STRING),
+    defaultValue: []
   }
 });
 
@@ -152,7 +158,8 @@ sequelize
       defaults: {
         prompt: "You are a helpful assistant.",
         knowledgeBaseSheetIds: [],
-        knowledgeBaseUrls: []
+        knowledgeBaseUrls: [],
+        knowledgeBasePdfPaths: []
       }
     });
   })
@@ -387,6 +394,20 @@ async function writeVariablesToSpreadsheet(sessionId) {
   }
 }
 
+// Add periodic PDF scanning
+setInterval(async () => {
+  try {
+    await scanAndProcessPdfs();
+  } catch (error) {
+    console.error('Error in periodic PDF scan:', error);
+  }
+}, 60000); // Check every minute
+
+// Initial PDF scan
+scanAndProcessPdfs().catch(error => {
+  console.error('Error in initial PDF scan:', error);
+});
+
 // Socket.IO connection handling
 io.on('connection', (socket) => {
   console.log('New client connected');
@@ -473,6 +494,19 @@ io.on('connection', (socket) => {
         } catch (error) {
           console.error('Error fetching webpage content:', error);
         }
+      }
+
+      // Add PDF knowledge base context
+      try {
+        const pdfContext = await getAllPdfContentForContext();
+        if (pdfContext) {
+          formattedMessages.unshift({
+            role: 'system',
+            content: `Additional Context:\n${pdfContext}`
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching PDF content:', error);
       }
 
       // Emit typing indicator
@@ -830,6 +864,26 @@ app.post('/api/target-spreadsheet', async (req, res) => {
     res.json({ success: true, targetSpreadsheetId: globalSettings.targetSpreadsheetId });
   } catch (error) {
     console.error('Error updating target spreadsheet:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Add new endpoint to get PDF knowledge base status
+app.get('/api/knowledge-base-pdfs', async (req, res) => {
+  try {
+    const globalSettings = await GlobalSettings.findByPk(1);
+    if (!globalSettings) {
+      return res.status(404).json({ error: 'Global settings not found' });
+    }
+
+    const pdfs = globalSettings.knowledgeBasePdfPaths.map(filePath => ({
+      name: path.basename(filePath),
+      path: filePath
+    }));
+
+    res.json({ pdfs });
+  } catch (error) {
+    console.error('Error fetching PDF knowledge base:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
